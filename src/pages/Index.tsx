@@ -1,37 +1,12 @@
-import { useState } from "react";
-import { Navigation } from "@/components/Navigation";
-import { HeroSection } from "@/components/HeroSection";
-import { GraphExplorer } from "@/components/GraphExplorer";
-import { UploadInterface } from "@/components/UploadInterface";
-import { ChatInterface } from "@/components/ChatInterface";
-import { ResearchDashboard } from "@/components/ResearchDashboard";
-
-type ViewType = 'home' | 'graph' | 'upload' | 'chat' | 'dashboard';
+// Update this page (the content is just a fallback if you fail to update the page)
 
 const Index = () => {
-  const [currentView, setCurrentView] = useState<ViewType>('home');
-
-  const renderView = () => {
-    switch (currentView) {
-      case 'graph':
-        return <GraphExplorer />;
-      case 'upload':
-        return <UploadInterface />;
-      case 'chat':
-        return <ChatInterface />;
-      case 'dashboard':
-        return <ResearchDashboard />;
-      default:
-        return <HeroSection onNavigate={setCurrentView} />;
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-background">
-      <Navigation currentView={currentView} onNavigate={setCurrentView} />
-      <main className="relative">
-        {renderView()}
-      </main>
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
+        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+      </div>
     </div>
   );
 };
