@@ -294,7 +294,7 @@ export const InteractiveGraph = ({ onNodeSelect }: InteractiveGraphProps) => {
               nodeColor={(node) => String(node.style?.background || '#6B7280')}
               className="bg-background border border-border rounded"
             />
-            <Background variant="dots" gap={12} size={1} />
+            <Background gap={12} size={1} />
           </ReactFlow>
         </CardContent>
       </Card>
