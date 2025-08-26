@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Upload, FileText, Brain, Search, TrendingUp, Users, BookOpen, ArrowRight } from "lucide-react";
 import { UploadInterface } from "@/components/UploadInterface";
 import { PaperInsights } from "@/components/PaperInsights";
+import { InteractiveGraph } from "@/components/InteractiveGraph";
 import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
@@ -159,6 +160,13 @@ const Index = () => {
             )}
           </div>
         </div>
+
+        {/* Interactive Graph */}
+        {uploadedPapers.length > 0 && (
+          <div className="mt-12">
+            <InteractiveGraph />
+          </div>
+        )}
 
         {/* Paper Insights */}
         {selectedPaper && (

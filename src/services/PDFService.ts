@@ -1,4 +1,8 @@
-// PDF parsing service using pdf-parse for browser
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set worker source for PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
 export interface PDFContent {
   text: string;
   metadata: {
@@ -17,33 +21,83 @@ export interface PDFContent {
 export class PDFService {
   static async parsePDF(file: File): Promise<PDFContent> {
     try {
-      // For browser environment, we'll use a different approach since pdf-parse is Node.js only
       return await this.parsePDFInBrowser(file);
     } catch (error) {
       console.error('Error parsing PDF:', error);
-      throw new Error('Failed to parse PDF file');
+      // Return fallback content instead of throwing
+      return this.createFallbackContent(file);
     }
   }
   
   private static async parsePDFInBrowser(file: File): Promise<PDFContent> {
-    // For now, we'll simulate PDF parsing and extract basic metadata
-    // In a real implementation, you'd use pdf.js or similar browser-compatible library
-    
     const arrayBuffer = await file.arrayBuffer();
-    const text = await this.extractTextFromPDF(arrayBuffer);
+    const uint8Array = new Uint8Array(arrayBuffer);
     
+    try {
+      // Load PDF document
+      const pdf = await pdfjsLib.getDocument(uint8Array).promise;
+      
+      // Extract metadata
+      const metadata = await pdf.getMetadata().catch(() => ({ info: {}, metadata: null }));
+      const info = metadata.info as any;
+      
+      // Extract text from all pages
+      let fullText = '';
+      const numPages = pdf.numPages;
+      
+      for (let pageNum = 1; pageNum <= Math.min(numPages, 10); pageNum++) { // Limit to first 10 pages for performance
+        try {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items
+            .filter((item: any) => item.str)
+            .map((item: any) => item.str)
+            .join(' ');
+          fullText += pageText + '\n';
+        } catch (pageError) {
+          console.warn(`Error processing page ${pageNum}:`, pageError);
+        }
+      }
+      
+      return {
+        text: fullText || 'No text content extracted from PDF',
+        metadata: {
+          title: info?.Title || this.extractTitleFromFilename(file.name),
+          author: info?.Author || 'Unknown',
+          subject: info?.Subject,
+          creator: info?.Creator,
+          producer: info?.Producer,
+          creationDate: info?.CreationDate ? new Date(info.CreationDate) : new Date(),
+          modificationDate: info?.ModDate ? new Date(info.ModDate) : undefined,
+        },
+        pages: numPages,
+        info: {
+          size: file.size,
+          type: file.type,
+          lastModified: new Date(file.lastModified),
+          pdfVersion: info?.PDFFormatVersion
+        }
+      };
+    } catch (pdfError) {
+      console.warn('PDF.js parsing failed, using fallback:', pdfError);
+      return this.createFallbackContent(file);
+    }
+  }
+  
+  private static createFallbackContent(file: File): PDFContent {
     return {
-      text,
+      text: `This PDF file (${file.name}) could not be parsed automatically. The file appears to be a valid PDF but may contain images, complex formatting, or be password protected. Please ensure the PDF contains searchable text for better analysis.`,
       metadata: {
         title: this.extractTitleFromFilename(file.name),
         author: 'Unknown',
         creationDate: new Date(),
       },
-      pages: Math.ceil(arrayBuffer.byteLength / 50000), // Rough estimate
+      pages: Math.ceil(file.size / 50000), // Rough estimate
       info: {
         size: file.size,
         type: file.type,
-        lastModified: new Date(file.lastModified)
+        lastModified: new Date(file.lastModified),
+        fallback: true
       }
     };
   }

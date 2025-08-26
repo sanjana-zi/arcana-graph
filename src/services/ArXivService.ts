@@ -12,7 +12,7 @@ export interface ArXivPaper {
 }
 
 export class ArXivService {
-  private static readonly BASE_URL = 'http://export.arxiv.org/api/query';
+  private static readonly BASE_URL = 'https://api.allorigins.win/raw?url=http://export.arxiv.org/api/query';
   
   static async searchPapers(query: string, maxResults: number = 10): Promise<ArXivPaper[]> {
     try {
