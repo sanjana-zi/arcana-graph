@@ -24,13 +24,22 @@ export class NLPService {
   private static summarizer: any = null;
   private static classifier: any = null;
   private static embeddings: any = null;
+  private static fastMode = true;
+  static setFastMode(enabled: boolean) { this.fastMode = enabled; }
   
   static async initialize() {
     try {
-      // Initialize models
-      this.summarizer = await pipeline('summarization', 'Xenova/distilbart-cnn-12-6');
-      this.classifier = await pipeline('text-classification', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
-      this.embeddings = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+      if (this.fastMode) {
+        // Skip heavy model loading in fast mode
+        this.summarizer = null;
+        this.classifier = null;
+        this.embeddings = null;
+        return;
+      }
+      // Load lightweight models on WebGPU when available
+      this.summarizer = await pipeline('summarization', 'Xenova/distilbart-cnn-12-6', { device: 'webgpu' });
+      this.classifier = await pipeline('text-classification', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english', { device: 'webgpu' });
+      this.embeddings = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { device: 'webgpu' });
     } catch (error) {
       console.error('Error initializing NLP models:', error);
     }
@@ -40,6 +49,18 @@ export class NLPService {
     await this.ensureModelsLoaded();
     
     try {
+      if (this.fastMode) {
+        const keywords = this.extractKeywords(text);
+        const entities = this.extractEntities(text);
+        const topics = this.extractTopics(text);
+        const citations = this.extractCitations(text);
+        const methodology = this.extractMethodology(text);
+        const findings = this.extractFindings(text);
+        const summary = this.extractiveSummary(text, 3);
+        const sentiment = this.ruleBasedSentiment(text);
+        return { summary, sentiment, keywords, entities, topics, citations, methodology, findings };
+      }
+
       const [
         summary,
         sentiment,
@@ -52,24 +73,15 @@ export class NLPService {
       ] = await Promise.all([
         this.generateSummary(text),
         this.analyzeSentiment(text),
-        this.extractKeywords(text),
-        this.extractEntities(text),
-        this.extractTopics(text),
-        this.extractCitations(text),
-        this.extractMethodology(text),
-        this.extractFindings(text)
+        Promise.resolve(this.extractKeywords(text)),
+        Promise.resolve(this.extractEntities(text)),
+        Promise.resolve(this.extractTopics(text)),
+        Promise.resolve(this.extractCitations(text)),
+        Promise.resolve(this.extractMethodology(text)),
+        Promise.resolve(this.extractFindings(text))
       ]);
       
-      return {
-        summary,
-        sentiment,
-        keywords,
-        entities,
-        topics,
-        citations,
-        methodology,
-        findings
-      };
+      return { summary, sentiment, keywords, entities, topics, citations, methodology, findings };
     } catch (error) {
       console.error('Error analyzing text:', error);
       throw new Error('Failed to analyze text');
@@ -77,13 +89,14 @@ export class NLPService {
   }
   
   private static async ensureModelsLoaded() {
+    if (this.fastMode) return; // No heavy models in fast mode
     if (!this.summarizer || !this.classifier || !this.embeddings) {
       await this.initialize();
     }
   }
   
   private static async generateSummary(text: string): Promise<string> {
-    if (!this.summarizer) return "Summary generation unavailable";
+    if (!this.summarizer) return this.extractiveSummary(text, 3);
     
     try {
       // Truncate text if too long
@@ -96,15 +109,15 @@ export class NLPService {
         do_sample: false
       });
       
-      return result[0]?.summary_text || "Unable to generate summary";
+      return result[0]?.summary_text || this.extractiveSummary(text, 3);
     } catch (error) {
       console.error('Error generating summary:', error);
-      return "Summary generation failed";
+      return this.extractiveSummary(text, 3);
     }
   }
   
   private static async analyzeSentiment(text: string): Promise<{ label: string; score: number }> {
-    if (!this.classifier) return { label: "NEUTRAL", score: 0.5 };
+    if (!this.classifier) return this.ruleBasedSentiment(text);
     
     try {
       const result = await this.classifier(text.substring(0, 512));
@@ -114,7 +127,7 @@ export class NLPService {
       };
     } catch (error) {
       console.error('Error analyzing sentiment:', error);
-      return { label: "NEUTRAL", score: 0.5 };
+      return this.ruleBasedSentiment(text);
     }
   }
   
@@ -148,6 +161,33 @@ export class NLPService {
       .map(([word]) => word);
   }
   
+  // Fast extractive summary without heavy models
+  private static extractiveSummary(text: string, maxSentences = 3): string {
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+    if (sentences.length === 0) return 'No content available for summary.';
+
+    const words = text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/);
+    const stop = new Set(['the','and','for','with','that','this','from','have','been','were','was','are','into','through','during','after','before','above','below','between','among','study','research','paper','method','approach','results']);
+    const freq = new Map<string, number>();
+    words.forEach(w => { if (w.length > 3 && !stop.has(w)) freq.set(w, (freq.get(w) || 0) + 1); });
+
+    const scored = sentences.map((s, i) => ({ i, s, score: s.toLowerCase().split(/\s+/).reduce((acc, w) => acc + (freq.get(w) || 0), 0) }));
+    scored.sort((a, b) => b.score - a.score);
+    const top = scored.slice(0, maxSentences).sort((a, b) => a.i - b.i).map(x => x.s.trim());
+    return top.join(' ');
+  }
+
+  private static ruleBasedSentiment(text: string): { label: string; score: number } {
+    const pos = ['significant','improvement','increase','outperform','robust','effective','benefit','advance','state-of-the-art'];
+    const neg = ['failure','limitation','weakness','decrease','problem','bias','error','risk','challenge'];
+    const lt = text.toLowerCase();
+    const p = pos.reduce((a, w) => a + (lt.includes(w) ? 1 : 0), 0);
+    const n = neg.reduce((a, w) => a + (lt.includes(w) ? 1 : 0), 0);
+    if (p > n) return { label: 'POSITIVE', score: Math.min(0.5 + (p - n) * 0.1, 0.95) };
+    if (n > p) return { label: 'NEGATIVE', score: Math.min(0.5 + (n - p) * 0.1, 0.95) };
+    return { label: 'NEUTRAL', score: 0.5 };
+  }
+
   private static extractEntities(text: string): Array<{
     entity: string;
     score: number;
@@ -287,7 +327,7 @@ export class NLPService {
   static async generateEmbeddings(text: string): Promise<number[]> {
     await this.ensureModelsLoaded();
     
-    if (!this.embeddings) return [];
+    if (this.fastMode || !this.embeddings) return [];
     
     try {
       const result = await this.embeddings(text.substring(0, 512));

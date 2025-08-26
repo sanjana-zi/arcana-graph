@@ -45,7 +45,7 @@ export class PDFService {
       let fullText = '';
       const numPages = pdf.numPages;
       
-      for (let pageNum = 1; pageNum <= Math.min(numPages, 10); pageNum++) { // Limit to first 10 pages for performance
+      for (let pageNum = 1; pageNum <= Math.min(numPages, 5); pageNum++) { // Limit to first 5 pages for performance
         try {
           const page = await pdf.getPage(pageNum);
           const textContent = await page.getTextContent();

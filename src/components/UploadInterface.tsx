@@ -34,8 +34,8 @@ export const UploadInterface = ({ onPaperUploaded }: UploadInterfaceProps) => {
   // Real paper analysis using multiple services
   const analyzePaper = async (file: File): Promise<any> => {
     try {
-      // Initialize NLP service
-      await NLPService.initialize();
+      // Enable fast mode for in-browser analysis
+      NLPService.setFastMode(true);
       
       // Parse PDF content
       const pdfContent = await PDFService.parsePDF(file);
@@ -228,8 +228,8 @@ export const UploadInterface = ({ onPaperUploaded }: UploadInterfaceProps) => {
         throw new Error('Paper not found');
       }
 
-      // Initialize NLP service and analyze the abstract
-      await NLPService.initialize();
+      // Enable fast mode for quick abstract analysis
+      NLPService.setFastMode(true);
       const analysisData = await NLPService.analyzeText(arxivPaper.abstract);
 
       const paperData = {
